@@ -1,0 +1,124 @@
+name: Publier et vérifier la démonstration
+
+# Ce dépôt ne contient que le build compilé de la démonstration. Le code
+# source vit dans un dépôt privé : GitHub Pages n'est pas disponible sur un
+# dépôt privé avec un compte gratuit, et rendre public le dépôt de travail
+# exposerait l'architecture du produit et l'analyse concurrentielle.
+#
+# `enablement: true` active Pages en mode « publication depuis Actions » si ce
+# n'est pas déjà fait. C'est délibéré : la publication depuis une branche est
+# implicite et muette — quand elle ne se déclenche pas, rien ne le signale et
+# le site reste figé sans qu'aucune erreur n'apparaisse nulle part.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Actions publiées par GitHub même : la catégorie de dépendance la moins
+      # risquée, et il n'existe pas d'équivalent maison pour déployer Pages.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # Ce qui part en ligne est énuméré, pas déduit d'exclusions implicites.
+      - name: Assembler le dossier à publier
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp index.html 404.html .nojekyll _site/
+          cp -R assets _site/
+          find _site -type f | sort
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Déployer
+        id: deploiement
+        uses: actions/deploy-pages@v4
+
+  verifier:
+    needs: publier
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Seule vérification qui prouve quelque chose : tout le reste ne dit que
+      # ce que GitHub a accepté de faire, pas ce qui est réellement servi.
+      - name: Vérifier le site réellement publié
+        run: |
+          set -uo pipefail
+          URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echec=0
+
+          echo "Vérification de $URL"
+          for tentative in $(seq 1 20); do
+            code=$(curl -s -o /tmp/page.html -w '%{http_code}' "$URL" || echo 000)
+            if [ "$code" = "200" ] && grep -q 'assets/index-' /tmp/page.html; then
+              echo "HTTP 200, la page référence bien ses assets."
+              break
+            fi
+            echo "tentative $tentative : HTTP $code"
+            if [ "$tentative" = "20" ]; then
+              echo "::error::$URL renvoie toujours HTTP $code après 200 secondes."
+              echec=1
+            fi
+            sleep 10
+          done
+
+          asset="—"
+          if [ "$echec" = "0" ]; then
+            # Un build compilé pour la racine servi sous un sous-chemin donne
+            # une page blanche : les chemins d'assets sont figés à la
+            # compilation, et rien ne le signale côté serveur.
+            asset=$(grep -o "/${{ github.event.repository.name }}/assets/[^\"]*\.js" /tmp/page.html | head -1)
+            if [ -z "$asset" ]; then
+              echo "::error::Aucun asset préfixé : mauvaise base de compilation."
+              echec=1
+              asset="absent"
+            else
+              code=$(curl -s -o /dev/null -w '%{http_code}' "https://${{ github.repository_owner }}.github.io${asset}")
+              echo "asset $asset : HTTP $code"
+              [ "$code" = "200" ] || { echo "::error::L'asset n'est pas servi."; echec=1; }
+            fi
+
+            curl -s -o /tmp/route.html "${URL}drm"
+            if grep -q 'assets/index-' /tmp/route.html; then
+              echo "lien direct vers ${URL}drm : servi via le repli 404.html"
+            else
+              echo "::warning::Le lien direct vers ${URL}drm ne rend pas l'application."
+            fi
+          fi
+
+          {
+            echo "### Démonstration en ligne"
+            echo ""
+            echo "| Élément | Résultat |"
+            echo "|---|---|"
+            echo "| $URL | $([ "$echec" = "0" ] && echo 'en ligne' || echo 'indisponible') |"
+            echo "| Asset | \`$asset\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$echec"
