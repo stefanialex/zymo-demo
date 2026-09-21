@@ -5,10 +5,17 @@ name: Publier et vérifier la démonstration
 # dépôt privé avec un compte gratuit, et rendre public le dépôt de travail
 # exposerait l'architecture du produit et l'analyse concurrentielle.
 #
-# `enablement: true` active Pages en mode « publication depuis Actions » si ce
-# n'est pas déjà fait. C'est délibéré : la publication depuis une branche est
-# implicite et muette — quand elle ne se déclenche pas, rien ne le signale et
-# le site reste figé sans qu'aucune erreur n'apparaisse nulle part.
+# Pages doit être activé à la main une fois, dans Settings → Pages, avec
+# « GitHub Actions » pour source : créer un site Pages exige un droit
+# d'administration du dépôt qu'aucun jeton d'automatisation ne possède, y
+# compris sur un dépôt public. Le workflow contrôle donc cette condition en
+# premier et l'énonce en clair, plutôt que d'échouer sur un message d'API qui
+# désigne un problème de droits alors que la cause est une case à cocher.
+#
+# Le mode « Actions » plutôt que « depuis une branche » est délibéré : la
+# publication depuis une branche est implicite et muette — quand elle ne se
+# déclenche pas, rien ne le signale et le site reste figé sans qu'aucune
+# erreur n'apparaisse nulle part.
 
 on:
   push:
@@ -36,11 +43,37 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Vérifier que Pages est activé
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          if config=$(gh api "repos/${{ github.repository }}/pages" 2>/dev/null); then
+            mode=$(echo "$config" | jq -r '.build_type // "legacy"')
+            echo "Pages est activé — mode de publication : $mode"
+            [ "$mode" = "workflow" ] && exit 0
+            echo "::error::Pages publie depuis une branche. Réglez la source sur « GitHub Actions » dans Settings → Pages, sinon ce déploiement sera accepté et sans effet."
+            exit 1
+          fi
+
+          {
+            echo "### GitHub Pages n'est pas encore activé sur ce dépôt"
+            echo ""
+            echo "Une case à cocher, une seule fois — créer un site Pages exige un"
+            echo "droit d'administration qu'aucun jeton d'automatisation ne possède :"
+            echo ""
+            echo "1. **Settings → Pages** sur ce dépôt"
+            echo "2. **Source** → **GitHub Actions**"
+            echo ""
+            echo "Le prochain envoi publiera tout seul ; sinon relancez ce workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::Pages n'est pas activé. Settings → Pages → Source : GitHub Actions, puis relancez ce workflow."
+          exit 1
+
       # Actions publiées par GitHub même : la catégorie de dépendance la moins
       # risquée, et il n'existe pas d'équivalent maison pour déployer Pages.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       # Ce qui part en ligne est énuméré, pas déduit d'exclusions implicites.
       - name: Assembler le dossier à publier
