@@ -125,9 +125,13 @@ jobs:
             # Un build compilé pour la racine servi sous un sous-chemin donne
             # une page blanche : les chemins d'assets sont figés à la
             # compilation, et rien ne le signale côté serveur.
-            asset=$(grep -o "/${{ github.event.repository.name }}/assets/[^\"]*\.js" /tmp/page.html | head -1)
+            # `|| true` indispensable : le job tourne sous `bash -e` avec
+            # pipefail, donc un grep sans correspondance tuait le script ici
+            # même — avant le message qui explique le problème. Le contrôle
+            # d'en dessous était inatteignable, et l'échec sortait nu.
+            asset=$(grep -o "/${{ github.event.repository.name }}/assets/[^\"]*\.js" /tmp/page.html | head -1 || true)
             if [ -z "$asset" ]; then
-              echo "::error::Aucun asset préfixé : mauvaise base de compilation."
+              echo "::error::La page ne référence aucun asset préfixé par /${{ github.event.repository.name }}/ : elle a été compilée pour un autre chemin de base. Les assets renverront 404 et la page restera blanche."
               echec=1
               asset="absent"
             else
