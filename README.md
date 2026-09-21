@@ -1,6 +1,6 @@
-# Zymo — démonstration
+# Cuvier — démonstration
 
-Démonstration publique de **Zymo**, un logiciel de gestion pour brasseries :
+Démonstration publique de **Cuvier**, un logiciel de gestion pour brasseries :
 comptabilité matière, traçabilité de lots, droits d'accise, DRM et facturation
 électronique.
 
@@ -10,6 +10,19 @@ comptabilité matière, traçabilité de lots, droits d'accise, DRM et facturati
 
 Uniquement le **build compilé** de la démonstration, et le workflow qui le
 publie. Le code source est développé dans un dépôt privé.
+
+## Un catalogue n'est pas que de la bière
+
+Sur un catalogue de brasserie réel, une référence sur cinq n'est pas une bière :
+cidres, hydromels, boissons fermentées, sans-alcool, produits exonérés et
+boissons sucrées relèvent de régimes fiscaux distincts, et deux d'entre eux ne
+sont pas de l'accise du tout.
+
+L'écran **Catalogue et fiscalité** montre le traitement de chaque référence. Le
+point important : une catégorie non gérée **ne rend jamais zéro**. Elle affiche
+la raison pour laquelle aucun montant n'est produit — ce qui est la différence
+entre une déclaration incomplète qu'on voit et une déclaration fausse qu'on ne
+voit pas.
 
 ## Les calculs sont réels
 
@@ -26,6 +39,13 @@ Ce qui est calculé, notamment :
 - **Factur-X / EN 16931** : règles BR et BR-CO vérifiées sur la facture
   produite.
 - **Affectation FEFO** des lots et valorisation au coût moyen pondéré.
+
+Les barèmes cidre, poiré, hydromel et boissons fermentées portent la mention
+« barème non contrôlé sur le texte officiel » : ils sont recoupés sur des
+sources secondaires concordantes, mais `douane.gouv.fr` et `legifrance.gouv.fr`
+n'étaient pas joignables au moment de les saisir. Le moteur refuse par défaut
+d'utiliser un barème non contrôlé ; la démonstration lève explicitement ce
+garde-fou pour rester consultable.
 
 ## Les données sont inventées
 
